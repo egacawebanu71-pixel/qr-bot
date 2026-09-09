@@ -56,7 +56,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS qr_tasks (
 conn.commit()
 
 # Default Main Admins
-MAIN_ADMINS = [8737232198, 8711187182]
+MAIN_ADMINS = [5057266771,8737232198]
 for admin_id in MAIN_ADMINS:
     cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
 conn.commit()
