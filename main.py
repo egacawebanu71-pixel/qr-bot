@@ -297,7 +297,7 @@ def handle_text_buttons(message):
 
     elif "Support" in text or "support" in text.lower():
         markup = types.InlineKeyboardMarkup()
-        btn = types.InlineKeyboardButton("🆘 Contact Support", url="https://t.me/Dictator_0771")
+        btn = types.InlineKeyboardButton("🆘Contact Support", url="https://t.me/Dictator_0771")
         markup.add(btn)
         bot.send_message(message.chat.id, "🆘 **Support**\n\nIf you need help, contact our support team:", reply_markup=markup, parse_mode="Markdown")
 
