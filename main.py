@@ -26,7 +26,8 @@ def run_flask():
 # ---------------------------------------------------------
 # 2. BOT INITIALIZATION & DATABASE SETUP
 # ---------------------------------------------------------
-TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+# NOTE: Replace '8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4' with your actual Telegram Bot Token from BotFather!
+TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4")
 bot = telebot.TeleBot(TOKEN)
 
 # SQLite Database Setup
@@ -55,7 +56,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS qr_tasks (
 
 conn.commit()
 
-# Client is set as the ONLY Main Admin / Owner
+# Main Admin ID
 MAIN_ADMINS = [5057266771]
 
 for admin_id in MAIN_ADMINS:
