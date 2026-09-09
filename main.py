@@ -24,7 +24,7 @@ def run_flask():
 # ---------------------------------------------------------
 # 2. BOT INITIALIZATION & DATABASE SETUP
 # ---------------------------------------------------------
-TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAFGPL0-xGOzgYCehm2muv8uJXPZInIVtPA")
+TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAH0K6Ph1p_Xtt_bq3CfahvS7Jgxy4ZN8ww")
 bot = telebot.TeleBot(TOKEN)
 
 conn = sqlite3.connect('bot_database.db', check_same_thread=False)
