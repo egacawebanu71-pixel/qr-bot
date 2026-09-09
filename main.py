@@ -8,566 +8,402 @@ from flask import Flask
 import telebot
 from telebot import types
 
-# ==================== 🛠️ LOGGING SETUP ====================
+# ---------------------------------------------------------
+# 1. LOGGING & FLASK 24/7 KEEP-ALIVE SERVER
+# ---------------------------------------------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ==================== 🌐 24/7 KEEPALIVE SERVER ====================
 web_app = Flask('')
 
 @web_app.route('/')
 def home():
-    return "⚡ QR Task Bot Pro Max is Live and Running 24/7!"
+    return "DAKSH QR BOT IS ALIVE 24/7!"
 
-def run_web():
-    port = int(os.environ.get('PORT', 8080))
-    web_app.run(host='0.0.0.0', port=port)
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    web_app.run(host="0.0.0.0", port=port)
 
-def keep_alive():
-    t = threading.Thread(target=run_web)
-    t.daemon = True
-    t.start()
+# ---------------------------------------------------------
+# 2. BOT INITIALIZATION & DATABASE SETUP
+# ---------------------------------------------------------
+TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE") # Render Environment Variables में टोकन डालें
+bot = telebot.TeleBot(TOKEN)
 
-keep_alive()
-
-# ==================== ⚙️ CONFIGURATION ====================
-BOT_TOKEN = "8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4"
-SUPPORT_USERNAME = "https://t.me/Dictator_0771"
-MAIN_ADMIN_ID = 8737232198
-
-REWARD_PER_TASK = 8.0   # ₹8 प्रति टास्क
-MIN_WITHDRAWAL = 1.0    # ₹1 मिनिमम विड्रॉल
-
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
-
-# ==================== 🗄️ DATABASE ENGINE ====================
-db_lock = threading.Lock()
+# SQLite Database Setup
 conn = sqlite3.connect('bot_database.db', check_same_thread=False)
 cursor = conn.cursor()
 
-def init_db():
-    with db_lock:
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            status TEXT DEFAULT 'pending_approval',
-            balance REAL DEFAULT 0.0
-        )''')
+# Tables Creation
+cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    balance REAL DEFAULT 0.0,
+    banned INTEGER DEFAULT 0
+)''')
 
-        cursor.execute('''CREATE TABLE IF NOT EXISTS admins (
-            user_id INTEGER PRIMARY KEY
-        )''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS admins (
+    user_id INTEGER PRIMARY KEY
+)''')
 
-        cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
-            task_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            qr_file_id TEXT,
-            reward REAL DEFAULT 8.0,
-            status TEXT DEFAULT 'open',
-            claimed_by INTEGER DEFAULT NULL,
-            claim_time TIMESTAMP DEFAULT NULL
-        )''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS qr_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    qr_file_id TEXT,
+    price REAL,
+    status TEXT DEFAULT 'AVAILABLE',
+    claimed_by INTEGER
+)''')
 
-        cursor.execute('''CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            work_no INTEGER,
-            task_no INTEGER,
-            reward REAL,
-            status TEXT,
-            timestamp TEXT
-        )''')
-        
-        cursor.execute('''CREATE TABLE IF NOT EXISTS withdrawals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            upi_id TEXT,
-            amount REAL,
-            status TEXT DEFAULT 'PENDING',
-            timestamp TEXT
-        )''')
+conn.commit()
 
-        # FORCE MAIN ADMIN AS APPROVED
-        cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (MAIN_ADMIN_ID,))
-        cursor.execute("INSERT OR REPLACE INTO users (user_id, status, balance) VALUES (?, 'approved', 0.0)", (MAIN_ADMIN_ID,))
-        conn.commit()
+# Default Main Admins
+MAIN_ADMINS = [8737232198, 8711187182]
+for admin_id in MAIN_ADMINS:
+    cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
+conn.commit()
 
-init_db()
-
-# ==================== ➕ ADD / REMOVE ADMIN COMMANDS ====================
-@bot.message_handler(commands=['addadmin'])
-def add_admin_cmd(message):
-    if message.from_user.id != MAIN_ADMIN_ID:
-        bot.send_message(message.chat.id, "❌ केवल Main Admin ही नए एडमिन जोड़ सकता है।")
-        return
-    
-    try:
-        args = message.text.split()
-        if len(args) < 2:
-            bot.send_message(message.chat.id, "⚠️ **सही तरीका:** `/addadmin <User_ID>`\nउदाहरण: `/addadmin 123456789`")
-            return
-        
-        new_admin_id = int(args[1])
-        with db_lock:
-            cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_admin_id,))
-            cursor.execute("UPDATE users SET status='approved' WHERE user_id=?", (new_admin_id,))
-            conn.commit()
-        
-        bot.send_message(message.chat.id, f"✅ यूजर `{new_admin_id}` को सफलतापूर्वक **Admin** बना दिया गया है!")
-        try:
-            bot.send_message(new_admin_id, "🎉 **बधाई हो!** आपको इस बॉट का Admin बना दिया गया है। आप /admin कमांड का इस्तेमाल कर सकते हैं।")
-        except Exception:
-            pass
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ गलत User ID! कृपया केवल नंबर डालें।")
-
-@bot.message_handler(commands=['removeadmin'])
-def remove_admin_cmd(message):
-    if message.from_user.id != MAIN_ADMIN_ID:
-        bot.send_message(message.chat.id, "❌ केवल Main Admin ही एडमिन हटा सकता है।")
-        return
-    
-    try:
-        args = message.text.split()
-        if len(args) < 2:
-            bot.send_message(message.chat.id, "⚠️ **सही तरीका:** `/removeadmin <User_ID>`\nउदाहरण: `/removeadmin 123456789`")
-            return
-        
-        rem_admin_id = int(args[1])
-        if rem_admin_id == MAIN_ADMIN_ID:
-            bot.send_message(message.chat.id, "❌ आप मेन एडमिन (खुद) को नहीं हटा सकते!")
-            return
-
-        with db_lock:
-            cursor.execute("DELETE FROM admins WHERE user_id=?", (rem_admin_id,))
-            conn.commit()
-        
-        bot.send_message(message.chat.id, f"✅ यूजर `{rem_admin_id}` को Admin से हटा दिया गया है।")
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ गलत User ID! कृपया केवल नंबर डालें।")
-
-# ==================== 🧱 HELPER FUNCTIONS ====================
+# Dynamic Admin Check Helper
 def is_admin(user_id):
-    if user_id == MAIN_ADMIN_ID:
-        return True
-    with db_lock:
-        cursor.execute("SELECT user_id FROM admins WHERE user_id=?", (user_id,))
-        return cursor.fetchone() is not None
+    cursor.execute("SELECT user_id FROM admins WHERE user_id = ?", (user_id,))
+    return cursor.fetchone() is not None
 
-def start_4min_timer(task_id, user_id):
-    def timer_task():
-        time.sleep(240)
-        with db_lock:
-            cursor.execute("SELECT status, claimed_by FROM tasks WHERE task_id=?", (task_id,))
-            task = cursor.fetchone()
-            if task and task[0] == 'claimed' and task[1] == user_id:
-                cursor.execute("UPDATE tasks SET status='expired', claimed_by=NULL WHERE task_id=?", (task_id,))
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cursor.execute("INSERT INTO history (user_id, work_no, task_no, reward, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                               (user_id, task_id, task_id, REWARD_PER_TASK, "EXPIRED", now))
-                conn.commit()
-                try:
-                    bot.send_message(user_id, "⚠️ **Task Expired!**\n\n4 minutes completed but you didn't submit task.")
-                except Exception:
-                    pass
+def register_user(user_id, username):
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username or "Unknown"))
+    conn.commit()
 
-    threading.Thread(target=timer_task, daemon=True).start()
+def is_banned(user_id):
+    cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    return row and row[0] == 1
 
-def get_user_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("📩 Get QR")
-    btn2 = types.KeyboardButton("💰 Balance")
-    btn3 = types.KeyboardButton("💸 Withdrawal")
-    btn4 = types.KeyboardButton("📜 History")
-    btn5 = types.KeyboardButton("🆘 Support")
-    markup.add(btn1, btn2, btn3, btn4)
-    markup.add(btn5)
-    return markup
+# Temporary memory store for multi-step inputs
+user_states = {}
 
-# ==================== 🚀 /START COMMAND ====================
+# ---------------------------------------------------------
+# 3. USER COMMAND HANDLERS
+# ---------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    user_id = message.from_user.id
+    uid = message.from_user.id
+    register_user(uid, message.from_user.username)
     
-    # MAIN ADMIN BYPASS
-    if user_id == MAIN_ADMIN_ID:
-        with db_lock:
-            cursor.execute("UPDATE users SET status='approved' WHERE user_id=?", (user_id,))
-            conn.commit()
-        bot.send_message(user_id, "👑 **Welcome Main Admin!**\n\nSend /admin anytime to open the Admin Panel.", reply_markup=get_user_keyboard())
+    if is_banned(uid):
+        bot.reply_to(message, "❌ आप इस बॉट में बैन (Ban) हैं!")
         return
+        
+    bot.reply_to(message, 
+                 "🚀 **DAKSH QR BOT** में आपका स्वागत है!\n\n"
+                 "नीचे दिए गए ऑप्शन्स और कमांड्स का उपयोग करें।\n"
+                 "💰 बैलेंस चेक: `/balance`\n"
+                 "💸 विड्रॉल: `/withdrawal`", 
+                 parse_mode="Markdown")
 
-    with db_lock:
-        cursor.execute("SELECT status FROM users WHERE user_id=?", (user_id,))
-        user = cursor.fetchone()
+@bot.message_handler(commands=['balance'])
+def balance_cmd(message):
+    uid = message.from_user.id
+    if is_banned(uid): return
+    register_user(uid, message.from_user.username)
+    
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
+    bal = cursor.fetchone()[0]
+    bot.reply_to(message, f"💰 **आपका कुल बैलेंस:** ₹{bal:.2f}", parse_mode="Markdown")
 
-        if not user:
-            cursor.execute("INSERT INTO users (user_id, status) VALUES (?, 'pending_approval')", (user_id,))
-            conn.commit()
-            status = 'pending_approval'
-        else:
-            status = user[0]
+@bot.message_handler(commands=['withdrawal'])
+def withdrawal_cmd(message):
+    uid = message.from_user.id
+    if is_banned(uid): return
+    
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
+    bal = cursor.fetchone()[0]
+    
+    if bal <= 0:
+        bot.reply_to(message, "❌ आपके पास विड्रॉल करने के लिए बैलेंस नहीं है!")
+    else:
+        bot.reply_to(message, f"💸 आपका विड्रॉल रिक्वेस्ट स्वीकार कर लिया गया है। एडमिन आपसे जल्द संपर्क करेंगे।\nबैलेंस: ₹{bal:.2f}")
 
-    if status == 'banned':
-        bot.send_message(user_id, "🚫 **Your account is permanently banned by administrator.**")
-        return
-
-    if status == 'approved':
-        bot.send_message(user_id, "👋 **Welcome Back!**\nSelect an option from menu below:", reply_markup=get_user_keyboard())
-        return
-
-    # IF PENDING APPROVAL
-    bot.send_message(user_id, "⏳ **Your request has been sent to the admin for approval.**\n\nPlease wait until an administrator approves your account.")
-
-    # NOTIFY ADMIN
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user_id}"),
-        types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user_id}"),
-        types.InlineKeyboardButton("🚫 Ban", callback_data=f"ban_{user_id}")
-    )
-    try:
-        bot.send_message(MAIN_ADMIN_ID, f"👤 **New User Approval Request:**\n\nUser ID: `{user_id}`\nName: {message.from_user.first_name}", reply_markup=markup)
-    except Exception:
-        pass
-
-# ==================== 👑 /ADMIN CONTROL PANEL ====================
+# ---------------------------------------------------------
+# 4. MAIN ADMIN CONTROL PANEL
+# ---------------------------------------------------------
 @bot.message_handler(commands=['admin'])
 def admin_panel_cmd(message):
     if not is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "❌ You are not authorized to use admin commands.")
+        bot.reply_to(message, "❌ You are not authorized to use admin commands.")
         return
 
     markup = types.InlineKeyboardMarkup(row_width=2)
-    b1 = types.InlineKeyboardButton("📸 Upload QR", callback_data="p_uploadqr")
+    b1 = types.InlineKeyboardButton("📤 Upload QR", callback_data="p_uploadqr")
     b2 = types.InlineKeyboardButton("📊 Bot Stats", callback_data="p_stats")
     b3 = types.InlineKeyboardButton("📢 Broadcast", callback_data="p_broadcast")
     b4 = types.InlineKeyboardButton("💸 Withdrawals", callback_data="p_withdrawals")
     b5 = types.InlineKeyboardButton("👥 Pending Users", callback_data="p_pendingusers")
-    markup.add(b1, b2, b3, b4, b5)
+    b6 = types.InlineKeyboardButton("➕ Add Admin", callback_data="p_addadmin")
+    b7 = types.InlineKeyboardButton("➖ Remove Admin", callback_data="p_removeadmin")
+    b8 = types.InlineKeyboardButton("👤 Registered Users", callback_data="p_users")
+    b9 = types.InlineKeyboardButton("🚫 Ban User", callback_data="p_banuser")
+    b10 = types.InlineKeyboardButton("✅ Unban User", callback_data="p_unbanuser")
 
-    bot.send_message(message.chat.id, "👑 **MAIN ADMIN CONTROL PANEL**\n\nSelect an operation from below:", reply_markup=markup)
+    markup.add(b1, b2)
+    markup.add(b3, b4)
+    markup.add(b5)
+    markup.add(b6, b7)
+    markup.add(b8)
+    markup.add(b9, b10)
+
+    bot.send_message(message.chat.id, "👑 **MAIN ADMIN CONTROL PANEL**\n\nSelect an operation from below:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("p_"))
-def admin_panel_callbacks(call):
+def admin_callbacks(call):
     if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ आपके पास परमिशन नहीं है!", show_alert=True)
         return
 
     action = call.data
+    chat_id = call.message.chat.id
 
-    if action == "p_uploadqr":
-        msg = bot.send_message(call.message.chat.id, "📸 **Send the QR Code Photo now to broadcast to all users:**")
-        bot.register_next_step_handler(msg, process_qr_upload)
-
-    elif action == "p_stats":
-        with db_lock:
-            cursor.execute("SELECT count(*) FROM users")
-            total_users = cursor.fetchone()[0]
-            cursor.execute("SELECT count(*) FROM users WHERE status='approved'")
-            approved_users = cursor.fetchone()[0]
-            cursor.execute("SELECT sum(balance) FROM users")
-            total_bal = cursor.fetchone()[0] or 0.0
-        bot.send_message(call.message.chat.id, f"📊 **BOT STATISTICS**\n\n👥 Total Users: {total_users}\n✅ Approved Users: {approved_users}\n💰 Total User Balances: ₹{total_bal:.2f}")
-
-    elif action == "p_broadcast":
-        msg = bot.send_message(call.message.chat.id, "📢 **Send the message you want to broadcast to all users:**")
-        bot.register_next_step_handler(msg, process_broadcast)
-
-    elif action == "p_withdrawals":
-        with db_lock:
-            cursor.execute("SELECT id, user_id, upi_id, amount FROM withdrawals WHERE status='PENDING' LIMIT 10")
-            pending = cursor.fetchall()
-        if not pending:
-            bot.send_message(call.message.chat.id, "✅ No pending withdrawals!")
-            return
-        for w in pending:
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("✅ Mark Paid", callback_data=f"pay_{w[0]}"))
-            bot.send_message(call.message.chat.id, f"💸 **Pending Withdrawal #{w[0]}**\nUser: `{w[1]}`\nUPI: `{w[2]}`\nAmount: ₹{w[3]:.2f}", reply_markup=markup)
-
-    elif action == "p_pendingusers":
-        with db_lock:
-            cursor.execute("SELECT user_id FROM users WHERE status='pending_approval' LIMIT 10")
-            users = cursor.fetchall()
-        if not users:
-            bot.send_message(call.message.chat.id, "✅ No pending user approvals!")
-            return
-        for u in users:
-            markup = types.InlineKeyboardMarkup()
-            markup.add(
-                types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{u[0]}"),
-                types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{u[0]}"),
-                types.InlineKeyboardButton("🚫 Ban", callback_data=f"ban_{u[0]}")
-            )
-            bot.send_message(call.message.chat.id, f"👤 **Pending User:** `{u[0]}`", reply_markup=markup)
-
-# ==================== 👮 APPROVE / REJECT / BAN HANDLERS ====================
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("app_", "rej_", "ban_")))
-def user_action_callback(call):
-    if not is_admin(call.from_user.id):
-        return
-
-    act, target = call.data.split("_")
-    target = int(target)
-
-    if act == "app":
-        with db_lock:
-            cursor.execute("UPDATE users SET status='approved' WHERE user_id=?", (target,))
-            conn.commit()
-        bot.edit_message_text(f"✅ User `{target}` Approved!", call.message.chat.id, call.message.message_id)
-        try:
-            bot.send_message(target, "🎉 **Congratulations!** Your account has been approved by Admin.", reply_markup=get_user_keyboard())
-        except Exception:
-            pass
-
-    elif act == "rej":
-        with db_lock:
-            cursor.execute("UPDATE users SET status='rejected' WHERE user_id=?", (target,))
-            conn.commit()
-        bot.edit_message_text(f"❌ User `{target}` Rejected!", call.message.chat.id, call.message.message_id)
-
-    elif act == "ban":
-        with db_lock:
-            cursor.execute("UPDATE users SET status='banned' WHERE user_id=?", (target,))
-            conn.commit()
-        bot.edit_message_text(f"🚫 User `{target}` Banned!", call.message.chat.id, call.message.message_id)
-
-# ==================== 📱 USER MENU HANDLER ====================
-@bot.message_handler(func=lambda msg: msg.text in ["📩 Get QR", "💰 Balance", "💸 Withdrawal", "📜 History", "🆘 Support"])
-def user_menu_handler(message):
-    user_id = message.from_user.id
+    if action == "p_stats":
+        cursor.execute("SELECT COUNT(*) FROM users")
+        u_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM admins")
+        a_count = cursor.fetchone()[0]
+        bot.send_message(chat_id, f"📊 **Bot Stats:**\n\n👥 कुल यूज़र्स: `{u_count}`\n👑 कुल एडमिन: `{a_count}`", parse_mode="Markdown")
     
-    with db_lock:
-        cursor.execute("SELECT status, balance FROM users WHERE user_id=?", (user_id,))
-        user = cursor.fetchone()
-
-    if not user or user[0] != 'approved':
-        bot.send_message(user_id, "⏳ **Your account is not approved yet.**")
-        return
-
-    text = message.text
-
-    if text == "📩 Get QR":
-        bot.send_message(user_id, "📍 **Get QR**\n\nThere is no QR available right now. Please wait for the next task.")
-
-    elif text == "💰 Balance":
-        bot.send_message(user_id, f"💰 **Your Balance:** ₹{user[1]:.2f}")
-
-    elif text == "💸 Withdrawal":
-        if user[1] < MIN_WITHDRAWAL:
-            bot.send_message(user_id, f"💸 **Withdrawal**\n\n📌 Minimum withdrawal: ₹{int(MIN_WITHDRAWAL)}\n\nYour balance is below ₹{int(MIN_WITHDRAWAL)}.")
-        else:
-            msg = bot.send_message(user_id, f"💸 **Withdrawal**\n\nMinimum withdrawal: ₹{int(MIN_WITHDRAWAL)}\n\n**Enter your UPI ID:**")
-            bot.register_next_step_handler(msg, process_upi_step)
-
-    elif text == "📜 History":
-        with db_lock:
-            cursor.execute("SELECT count(*) FROM history WHERE user_id=? AND status='SUCCESS'", (user_id,))
-            success = cursor.fetchone()[0]
-            cursor.execute("SELECT count(*) FROM history WHERE user_id=? AND status='FAILED'", (user_id,))
-            failed = cursor.fetchone()[0]
-            cursor.execute("SELECT count(*) FROM history WHERE user_id=? AND status='EXPIRED'", (user_id,))
-            expired = cursor.fetchone()[0]
-            cursor.execute("SELECT count(*) FROM history WHERE user_id=? AND status='PENDING'", (user_id,))
-            pending = cursor.fetchone()[0]
-
-            cursor.execute("SELECT work_no, task_no, reward, status, timestamp FROM history WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,))
-            last_act = cursor.fetchone()
-
-        act_text = "No recent activity"
-        if last_act:
-            act_text = f"📂 Work #{last_act[0]}\n📌 Task: #{last_act[1]}\n💰 Reward: ₹{last_act[2]:.2f}\n📊 Status: {last_act[3]}\n🕒 {last_act[4]}"
-
-        history_msg = f"📊 **MY HISTORY**\n\n✅ Success: {success}\n❌ Failed: {failed}\n⏳ Expired: {expired}\n⏳ Pending: {pending}\n\n📜 **RECENT ACTIVITY**\n__________________\n\n{act_text}"
-        bot.send_message(user_id, history_msg)
-
-    elif text == "🆘 Support":
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🆘 Contact Support", url=SUPPORT_USERNAME))
-        bot.send_message(user_id, "🆘 **Support Center**\n\nIf you need help or face any issues, contact support:", reply_markup=markup)
-
-# ==================== 💳 WITHDRAWAL PROCESS ====================
-def process_upi_step(message):
-    upi_id = message.text.strip()
-    msg = bot.send_message(message.chat.id, f"Enter amount to withdraw (Min ₹{int(MIN_WITHDRAWAL)}):")
-    bot.register_next_step_handler(msg, lambda m: process_amount_step(m, upi_id))
-
-def process_amount_step(message, upi_id):
-    try:
-        amount = float(message.text.strip())
-        user_id = message.from_user.id
+    elif action == "p_uploadqr":
+        bot.send_message(chat_id, "📤 QR अपलोड करने के लिए `/uploadqr` टाइप करें या सीधे फोटो भेजें।", parse_mode="Markdown")
+    
+    elif action == "p_broadcast":
+        bot.send_message(chat_id, "📢 ब्रॉडकास्ट भेजने के लिए यह कमांड लिखें:\n`/broadcast आपका मैसेज`", parse_mode="Markdown")
         
-        with db_lock:
-            cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            bal = cursor.fetchone()[0]
+    elif action == "p_addadmin":
+        bot.send_message(chat_id, "➕ नया एडमिन जोड़ने के लिए कमांड लिखें:\n`/addadmin <User_ID>`", parse_mode="Markdown")
+        
+    elif action == "p_removeadmin":
+        bot.send_message(chat_id, "➖ एडमिन हटाने के लिए कमांड लिखें:\n`/removeadmin <User_ID>`", parse_mode="Markdown")
+        
+    elif action == "p_users":
+        cursor.execute("SELECT user_id, username, balance FROM users LIMIT 20")
+        rows = cursor.fetchall()
+        text = "👥 **Registered Users (Top 20):**\n\n"
+        for r in rows:
+            text += f"• ID: `{r[0]}` | @{r[1]} | Balance: ₹{r[2]}\n"
+        bot.send_message(chat_id, text, parse_mode="Markdown")
 
-            if amount < MIN_WITHDRAWAL or amount > bal:
-                bot.send_message(user_id, "❌ **Invalid amount or insufficient balance.**")
-                return
+    elif action == "p_banuser":
+        bot.send_message(chat_id, "🚫 यूज़र बैन करने के लिए लिखें:\n`/ban <User_ID>`", parse_mode="Markdown")
 
-            cursor.execute("UPDATE users SET balance=balance-? WHERE user_id=?", (amount, user_id))
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute("INSERT INTO withdrawals (user_id, upi_id, amount, timestamp) VALUES (?, ?, ?, ?)", (user_id, upi_id, amount, now))
-            conn.commit()
+    elif action == "p_unbanuser":
+        bot.send_message(chat_id, "✅ यूज़र अनबैन करने के लिए लिखें:\n`/unban <User_ID>`", parse_mode="Markdown")
 
-        try:
-            bot.send_message(MAIN_ADMIN_ID, f"💸 **NEW WITHDRAWAL REQUEST**\n\n👤 User ID: `{user_id}`\n💳 UPI ID: `{upi_id}`\n💰 Amount: ₹{amount:.2f}")
-        except Exception:
-            pass
+# ---------------------------------------------------------
+# 5. ALL ADMIN COMMANDS
+# ---------------------------------------------------------
 
-        bot.send_message(user_id, "✅ **Withdrawal request submitted successfully!**\nAdmin will process it soon.")
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ Please enter a valid numerical amount.")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("pay_"))
-def mark_paid_handler(call):
-    if not is_admin(call.from_user.id):
-        return
-    wid = int(call.data.split("_")[1])
-    with db_lock:
-        cursor.execute("UPDATE withdrawals SET status='PAID' WHERE id=?", (wid,))
-        conn.commit()
-    bot.edit_message_text(f"✅ Withdrawal #{wid} marked as PAID!", call.message.chat.id, call.message.message_id)
-
-# ==================== 🔒 FIRST-CLAIM QR SYSTEM ====================
-@bot.callback_query_handler(func=lambda call: call.data.startswith("claim_"))
-def claim_qr_callback(call):
-    task_id = int(call.data.split("_")[1])
-    user_id = call.from_user.id
-
-    with db_lock:
-        cursor.execute("SELECT qr_file_id, status FROM tasks WHERE task_id=?", (task_id,))
-        task = cursor.fetchone()
-
-        if not task or task[1] != 'open':
-            bot.answer_callback_query(call.id, "❌ QR already claimed by someone!", show_alert=True)
-            return
-
-        cursor.execute("UPDATE tasks SET status='claimed', claimed_by=?, claim_time=? WHERE task_id=? AND status='open'",
-                       (user_id, datetime.now(), task_id))
-        conn.commit()
-        success = cursor.rowcount > 0
-
-    if not success:
-        bot.answer_callback_query(call.id, "❌ QR already claimed by someone!", show_alert=True)
-        return
-
-    bot.answer_callback_query(call.id, "✅ QR Claimed Successfully!")
+# /addadmin <User_ID>
+@bot.message_handler(commands=['addadmin'])
+def add_admin_cmd(message):
+    if not is_admin(message.from_user.id): return
     try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
-        pass
-
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📤 Submit Task", callback_data=f"submittask_{task_id}"),
-               types.InlineKeyboardButton("🔄 Release Task", callback_data=f"releasetask_{task_id}"))
-
-    bot.send_photo(user_id, task[0], caption=f"📷 **QR CLAIMED**\n\nTask ID: #{task_id}\nYou have **4 minutes** to complete the payment and submit.", reply_markup=markup)
-    start_4min_timer(task_id, user_id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("submittask_", "releasetask_")))
-def submit_release_handler(call):
-    action, task_id = call.data.split("_")
-    task_id = int(task_id)
-    user_id = call.from_user.id
-
-    if action == "releasetask":
-        with db_lock:
-            cursor.execute("UPDATE tasks SET status='open', claimed_by=NULL WHERE task_id=?", (task_id,))
-            conn.commit()
-        bot.edit_message_caption("🔄 Task released! Anyone else can claim it now.", call.message.chat.id, call.message.message_id)
-    else:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with db_lock:
-            cursor.execute("UPDATE tasks SET status='submitted' WHERE task_id=?", (task_id,))
-            cursor.execute("INSERT INTO history (user_id, work_no, task_no, reward, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                           (user_id, task_id, task_id, REWARD_PER_TASK, "PENDING", now))
-            conn.commit()
-
-        bot.edit_message_caption("✅ **Task submitted successfully!**\nWaiting for admin review.", call.message.chat.id, call.message.message_id)
-
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("✅ Accept", callback_data=f"taskaccept_{task_id}_{user_id}"),
-                   types.InlineKeyboardButton("❌ Reject", callback_data=f"taskreject_{task_id}_{user_id}"))
-        try:
-            bot.send_message(MAIN_ADMIN_ID, f"📑 **TASK SUBMISSION REVIEW**\n\n👤 User ID: `{user_id}`\n📌 Task ID: #{task_id}", reply_markup=markup)
-        except Exception:
-            pass
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("taskaccept_", "taskreject_")))
-def task_review_handler(call):
-    if not is_admin(call.from_user.id):
-        return
-
-    parts = call.data.split("_")
-    action, task_id, user_id = parts[0], int(parts[1]), int(parts[2])
-
-    if action == "taskaccept":
-        with db_lock:
-            cursor.execute("UPDATE users SET balance=balance+? WHERE user_id=?", (REWARD_PER_TASK, user_id))
-            cursor.execute("UPDATE history SET status='SUCCESS' WHERE user_id=? AND work_no=?", (user_id, task_id))
-            conn.commit()
-        bot.edit_message_text(f"✅ Task #{task_id} Accepted for user `{user_id}`", call.message.chat.id, call.message.message_id)
-        try:
-            bot.send_message(user_id, f"🎉 **Task Accepted!**\n\n₹{REWARD_PER_TASK:.2f} has been added to your balance.")
-        except Exception:
-            pass
-    else:
-        with db_lock:
-            cursor.execute("UPDATE history SET status='FAILED' WHERE user_id=? AND work_no=?", (user_id, task_id))
-            conn.commit()
-        bot.edit_message_text(f"❌ Task #{task_id} Rejected for user `{user_id}`", call.message.chat.id, call.message.message_id)
-        try:
-            bot.send_message(user_id, f"❌ **Task Rejected!**\n\nYour submission for Task #{task_id} was rejected by admin.")
-        except Exception:
-            pass
-
-# ==================== 🛠️ HELPER PROCESSORS ====================
-def process_qr_upload(message):
-    if not message.photo:
-        bot.send_message(message.chat.id, "❌ No photo detected.")
-        return
-
-    file_id = message.photo[-1].file_id
-    with db_lock:
-        cursor.execute("INSERT INTO tasks (qr_file_id, reward, status) VALUES (?, ?, 'open')", (file_id, REWARD_PER_TASK))
-        task_id = cursor.lastrowid
-        cursor.execute("SELECT user_id FROM users WHERE status='approved'")
-        users = cursor.fetchall()
+        new_id = int(message.text.split()[1])
+        cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_id,))
         conn.commit()
+        bot.reply_to(message, f"✅ **User ID `{new_id}` अब एडमिन बन चुका है!**", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/addadmin 123456789`", parse_mode="Markdown")
 
-    # EXACT BROADCAST MESSAGE MATCHING SCREENSHOT
-    qr_broadcast_msg = (
+# /removeadmin <User_ID>
+@bot.message_handler(commands=['removeadmin'])
+def remove_admin_cmd(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        rem_id = int(message.text.split()[1])
+        cursor.execute("DELETE FROM admins WHERE user_id = ?", (rem_id,))
+        conn.commit()
+        bot.reply_to(message, f"🚫 **User ID `{rem_id}` को एडमिन से हटा दिया गया!**", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/removeadmin 123456789`", parse_mode="Markdown")
+
+# /users
+@bot.message_handler(commands=['users'])
+def users_cmd(message):
+    if not is_admin(message.from_user.id): return
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total = cursor.fetchone()[0]
+    bot.reply_to(message, f"👥 **कुल रजिस्टर्ड यूज़र्स:** `{total}`", parse_mode="Markdown")
+
+# /ban <User_ID>
+@bot.message_handler(commands=['ban'])
+def ban_cmd(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        target_id = int(message.text.split()[1])
+        cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (target_id,))
+        conn.commit()
+        bot.reply_to(message, f"🚫 User ID `{target_id}` को **बैन** कर दिया गया!", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/ban 123456789`", parse_mode="Markdown")
+
+# /unban <User_ID>
+@bot.message_handler(commands=['unban'])
+def unban_cmd(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        target_id = int(message.text.split()[1])
+        cursor.execute("UPDATE users SET banned = 0 WHERE user_id = ?", (target_id,))
+        conn.commit()
+        bot.reply_to(message, f"✅ User ID `{target_id}` को **अनबैन** कर दिया गया!", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/unban 123456789`", parse_mode="Markdown")
+
+# /broadcast <Message>
+@bot.message_handler(commands=['broadcast'])
+def broadcast_cmd(message):
+    if not is_admin(message.from_user.id): return
+    msg_text = message.text.replace("/broadcast", "").strip()
+    if not msg_text:
+        bot.reply_to(message, "⚠️ कमांड के साथ मैसेज भी लिखें! उदाहरण:\n`/broadcast हेलो दोस्तों`", parse_mode="Markdown")
+        return
+        
+    cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+    users = cursor.fetchall()
+    count = 0
+    for u in users:
+        try:
+            bot.send_message(u[0], msg_text)
+            count += 1
+        except:
+            pass
+    bot.reply_to(message, f"📢 ब्रॉडकास्ट कुल `{count}` यूज़र्स को भेज दिया गया!", parse_mode="Markdown")
+
+# /broadcastphoto
+@bot.message_handler(commands=['broadcastphoto'])
+def broadcast_photo_cmd(message):
+    if not is_admin(message.from_user.id): return
+    user_states[message.from_user.id] = "WAITING_BROADCAST_PHOTO"
+    bot.reply_to(message, "📸 कृपया वो फोटो भेजें जिसे आप सब यूज़र्स को ब्रॉडकास्ट करना चाहते हैं:")
+
+# /uploadqr
+@bot.message_handler(commands=['uploadqr'])
+def upload_qr_cmd(message):
+    if not is_admin(message.from_user.id): return
+    user_states[message.from_user.id] = "WAITING_QR_PHOTO"
+    bot.reply_to(message, "📥 कृपया QR Code की इमेज (Photo) भेजें:")
+
+# Photo Receiver (For QR Upload & Broadcast Photo)
+@bot.message_handler(content_types=['photo'])
+def handle_photos(message):
+    uid = message.from_user.id
+    if not is_admin(uid): return
+    
+    state = user_states.get(uid)
+    
+    if state == "WAITING_BROADCAST_PHOTO":
+        file_id = message.photo[-1].file_id
+        caption = message.caption or ""
+        cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+        users = cursor.fetchall()
+        count = 0
+        for u in users:
+            try:
+                bot.send_photo(u[0], file_id, caption=caption)
+                count += 1
+            except:
+                pass
+        user_states[uid] = None
+        bot.reply_to(message, f"📸 फोटो ब्रॉडकास्ट `{count}` यूज़र्स को सफलतापूर्वक भेज दिया गया!", parse_mode="Markdown")
+        
+    elif state == "WAITING_QR_PHOTO":
+        file_id = message.photo[-1].file_id
+        cursor.execute("INSERT INTO qr_tasks (qr_file_id, price) VALUES (?, ?)", (file_id, 10.0))
+        conn.commit()
+        task_id = cursor.lastrowid
+        user_states[uid] = None
+        bot.reply_to(message, f"✅ QR Code सफलतापूर्वक सेव हो गया! Task ID: `{task_id}`", parse_mode="Markdown")
+
+# /newqr - EXACT SCREENSHOT UI MATCHING
+@bot.message_handler(commands=['newqr'])
+def new_qr_cmd(message):
+    if not is_admin(message.from_user.id): return
+    cursor.execute("SELECT id, qr_file_id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        bot.reply_to(message, "⚠️ कोई उपलब्ध QR नहीं है! पहले `/uploadqr` से QR अपलोड करें।")
+        return
+        
+    task_id, file_id = row
+    markup = types.InlineKeyboardMarkup()
+    btn = types.InlineKeyboardButton("💳 Make Payment", callback_data=f"claim_qr_{task_id}")
+    markup.add(btn)
+    
+    # Exact Screenshot UI Caption
+    caption_text = (
         "📢 **NEW QR AVAILABLE**\n\n"
         "Tap 💳 **Make Payment** to claim the QR.\n"
         "Only the first eligible member can claim it."
     )
-
+    
+    cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+    users = cursor.fetchall()
     for u in users:
         try:
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("💳 Make Payment", callback_data=f"claim_{task_id}"))
-            bot.send_message(u[0], qr_broadcast_msg, reply_markup=markup)
-        except Exception:
+            bot.send_photo(u[0], file_id, caption=caption_text, reply_markup=markup, parse_mode="Markdown")
+        except:
             pass
+    bot.reply_to(message, "🚀 नया QR स्क्रीनशॉट स्टाइल में सभी यूज़र्स को भेज दिया गया है!")
 
-    bot.send_message(message.chat.id, f"✅ **QR Task #{task_id} announced to all users!**")
-
-def process_broadcast(message):
-    text = message.text
-    if not text:
+# QR Claim Button Action (First Come First Serve Security)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("claim_qr_"))
+def claim_qr_callback(call):
+    uid = call.from_user.id
+    if is_banned(uid):
+        bot.answer_callback_query(call.id, "❌ आप बैन हैं!", show_alert=True)
         return
-    with db_lock:
-        cursor.execute("SELECT user_id FROM users WHERE status='approved'")
-        users = cursor.fetchall()
+        
+    task_id = int(call.data.replace("claim_qr_", ""))
+    cursor.execute("SELECT status FROM qr_tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    
+    if not row or row[0] != 'AVAILABLE':
+        bot.answer_callback_query(call.id, "❌ यह QR पहले ही किसी द्वारा क्लेम किया जा चुका है!", show_alert=True)
+    else:
+        cursor.execute("UPDATE qr_tasks SET status = 'CLAIMED', claimed_by = ? WHERE id = ?", (uid, task_id))
+        cursor.execute("UPDATE users SET balance = balance + 10.0 WHERE user_id = ?", (uid,))
+        conn.commit()
+        bot.answer_callback_query(call.id, "🎉 बधाई हो! आपने QR सफलता से क्लेम कर लिया। आपके खाते में ₹10 जोड़ दिए गए!", show_alert=True)
 
-    sent = 0
-    for u in users:
-        try:
-            bot.send_message(u[0], text)
-            sent += 1
-        except Exception:
-            pass
-    bot.send_message(message.chat.id, f"📢 Broadcast sent to {sent} users!")
+# /addbalance <User_ID> <Amount>
+@bot.message_handler(commands=['addbalance'])
+def add_balance_cmd(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        parts = message.text.split()
+        target_id = int(parts[1])
+        amount = float(parts[2])
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_id))
+        conn.commit()
+        bot.reply_to(message, f"✅ User ID `{target_id}` के बैलेंस में **+₹{amount:.2f}** बढ़ा दिए गए!", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/addbalance 123456789 50`", parse_mode="Markdown")
 
-# ==================== 🔄 RUN BOT ====================
-logging.info("Bot is starting...")
-bot.infinity_polling(timeout=20, long_polling_timeout=10)
+# /deductbalance <User_ID> <Amount>
+@bot.message_handler(commands=['deductbalance'])
+def deduct_balance_cmd(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        parts = message.text.split()
+        target_id = int(parts[1])
+        amount = float(parts[2])
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, target_id))
+        conn.commit()
+        bot.reply_to(message, f"✅ User ID `{target_id}` के बैलेंस से **-₹{amount:.2f}** काट लिए गए!", parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "⚠️ सही तरीका: `/deductbalance 123456789 20`", parse_mode="Markdown")
 
+# ---------------------------------------------------------
+# 6. MAIN EXECUTION THREAD
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    # Start Keep-Alive Flask Server in background thread
+    server_thread = threading.Thread(target=run_flask)
+    server_thread.daemon = True
+    server_thread.start()
+    
+    print("Bot starting polling...")
+    bot.infinity_polling(skip_pending=True)
