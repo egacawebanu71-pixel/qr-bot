@@ -395,6 +395,58 @@ def deduct_balance_cmd(message):
         bot.reply_to(message, f"✅ User ID `{target_id}` के बैलेंस से **-₹{amount:.2f}** काट लिए गए!", parse_mode="Markdown")
     except:
         bot.reply_to(message, "⚠️ सही तरीका: `/deductbalance 123456789 20`", parse_mode="Markdown")
+# ---------------------------------------------------------
+# CUSTOM KEYBOARD / TEXT BUTTON HANDLERS
+# ---------------------------------------------------------
+@bot.message_handler(func=lambda message: True)
+def handle_text_buttons(message):
+    uid = message.from_user.id
+    if is_banned(uid): 
+        return
+        
+    register_user(uid, message.from_user.username)
+    text = message.text.strip()
+
+    # Get QR Button
+    if text in ["📍 Get QR", "Get QR", "QR"]:
+        cursor.execute("SELECT id, qr_file_id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            bot.reply_to(message, "⚠️ अभी कोई नया QR उपलब्ध नहीं है!")
+            return
+        task_id, file_id = row
+        markup = types.InlineKeyboardMarkup()
+        btn = types.InlineKeyboardButton("💳 Make Payment", callback_data=f"claim_qr_{task_id}")
+        markup.add(btn)
+        caption_text = (
+            "📢 **NEW QR AVAILABLE**\n\n"
+            "Tap 💳 **Make Payment** to claim the QR.\n"
+            "Only the first eligible member can claim it."
+        )
+        bot.send_photo(message.chat.id, file_id, caption=caption_text, reply_markup=markup, parse_mode="Markdown")
+
+    # Balance Button
+    elif text in ["💰 Balance", "Balance"]:
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
+        bal = cursor.fetchone()[0]
+        bot.reply_to(message, f"💰 **आपका कुल बैलेंस:** ₹{bal:.2f}", parse_mode="Markdown")
+
+    # Withdrawal Button
+    elif text in ["💸 Withdrawal", "Withdrawal"]:
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
+        bal = cursor.fetchone()[0]
+        if bal <= 0:
+            bot.reply_to(message, "❌ आपके पास विड्रॉल करने के लिए बैलेंस नहीं है!")
+        else:
+            bot.reply_to(message, f"💸 आपका विड्रॉल रिक्वेस्ट स्वीकार कर लिया गया है। एडमिन आपसे जल्द संपर्क करेंगे।\nबैलेंस: ₹{bal:.2f}")
+
+    # History Button
+    elif text in ["📜 History", "History"]:
+        bot.reply_to(message, "📜 आपकी हिस्ट्री में अभी कोई पिछला रिकॉर्ड नहीं है।")
+
+    # Support Button
+    elif text in ["🆘 Support", "Support"]:
+        bot.reply_to(message, "🆘 सहायता के लिए हमारे एडमिन से संपर्क करें।")
 
 # ---------------------------------------------------------
 # 6. MAIN EXECUTION THREAD
