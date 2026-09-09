@@ -26,8 +26,7 @@ def run_flask():
 # ---------------------------------------------------------
 # 2. BOT INITIALIZATION & DATABASE SETUP
 # ---------------------------------------------------------
-# REPLACE 'YOUR_BOT_TOKEN_HERE' WITH YOUR ACTUAL BOT TOKEN FROM BOTFATHER
-TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4")
+TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAFGPL0-xGOzgYCehm2muv8uJXPZInIVtPA")
 bot = telebot.TeleBot(TOKEN)
 
 # SQLite Database Setup
@@ -336,7 +335,7 @@ def claim_qr_callback(call):
         bot.answer_callback_query(call.id, "🎉 Congratulations! You successfully claimed the QR. ₹10 added!", show_alert=True)
 
 # ---------------------------------------------------------
-# 6. TEXT BUTTON HANDLERS (FIXED EMOJI MATCHING & ENGLISH)
+# 6. TEXT BUTTON HANDLERS (ENGLISH)
 # ---------------------------------------------------------
 @bot.message_handler(func=lambda message: True)
 def handle_text_buttons(message):
@@ -347,7 +346,6 @@ def handle_text_buttons(message):
     register_user(uid, message.from_user.username)
     text = message.text.strip()
 
-    # Exact Emoji Matching for Telegram Reply Keyboard Buttons
     if "Get QR" in text or "get qr" in text.lower():
         cursor.execute("SELECT id, qr_file_id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
