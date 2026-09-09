@@ -1,14 +1,13 @@
 import os
 import sqlite3
 import threading
-import time
 import logging
 from flask import Flask
 import telebot
 from telebot import types
 
 # ---------------------------------------------------------
-# 1. LOGGING & FLASK KEEP-ALIVE SERVER
+# 1. LOGGING & FLASK KEEP-ALIVE SERVER (FOR RENDER)
 # ---------------------------------------------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -25,7 +24,7 @@ def run_flask():
 # ---------------------------------------------------------
 # 2. BOT INITIALIZATION & DATABASE SETUP
 # ---------------------------------------------------------
-TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAEgEQQqiMuOwqLTWQGfZoflGD3yBmuwAPI")
+TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAFGPL0-xGOzgYCehm2muv8uJXPZInIVtPA")
 bot = telebot.TeleBot(TOKEN)
 
 conn = sqlite3.connect('bot_database.db', check_same_thread=False)
@@ -53,6 +52,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS qr_tasks (
 
 conn.commit()
 
+# Main Owner Admin ID
 MAIN_ADMINS = [5057266771]
 for admin_id in MAIN_ADMINS:
     cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (admin_id,))
@@ -73,6 +73,17 @@ def is_banned(user_id):
 
 user_states = {}
 
+def get_main_keyboard():
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add(
+        types.KeyboardButton("Get QR"),
+        types.KeyboardButton("💰 Balance"),
+        types.KeyboardButton("💸 Withdrawal"),
+        types.KeyboardButton("📜 History"),
+        types.KeyboardButton("🆘 Support")
+    )
+    return markup
+
 # ---------------------------------------------------------
 # 3. USER COMMAND HANDLERS
 # ---------------------------------------------------------
@@ -85,12 +96,13 @@ def start_cmd(message):
         bot.reply_to(message, "❌ You are banned from using this bot!")
         return
         
-    bot.reply_to(message, 
-                 "🚀 **Welcome to DAKSH QR BOT!**\n\n"
-                 "Use the menu buttons below or commands to navigate:\n"
-                 "💰 Check Balance: `/balance`\n"
-                 "💸 Withdraw: `/withdrawal`", 
-                 parse_mode="Markdown")
+    start_msg = (
+        "🚀 **Welcome to DAKSH QR BOT!**\n\n"
+        "Use the menu buttons below or commands to navigate:\n"
+        "💰 Check Balance: `/balance`\n"
+        "💸 Withdraw: `/withdrawal`"
+    )
+    bot.send_message(message.chat.id, start_msg, reply_markup=get_main_keyboard(), parse_mode="Markdown")
 
 @bot.message_handler(commands=['balance'])
 def balance_cmd(message):
@@ -107,12 +119,13 @@ def balance_cmd(message):
         "💵 Reward per approved work: ₹8\n"
         "💸 Minimum withdrawal: ₹1"
     )
-    bot.reply_to(message, msg)
+    bot.send_message(message.chat.id, msg, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=['withdrawal'])
 def withdrawal_cmd(message):
     uid = message.from_user.id
     if is_banned(uid): return
+    register_user(uid, message.from_user.username)
     
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
     bal = cursor.fetchone()[0]
@@ -123,7 +136,7 @@ def withdrawal_cmd(message):
         "💸 Minimum withdrawal: ₹1\n\n"
         "Enter an amount of ₹1 or more:"
     )
-    bot.reply_to(message, msg)
+    bot.send_message(message.chat.id, msg, reply_markup=get_main_keyboard())
 
 # ---------------------------------------------------------
 # 4. ADMIN PANEL & COMMANDS
@@ -135,14 +148,7 @@ def admin_panel_cmd(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("📤 Upload QR", callback_data="p_uploadqr"),
-        types.InlineKeyboardButton("📊 Bot Stats", callback_data="p_stats"),
-        types.InlineKeyboardButton("📢 Broadcast", callback_data="p_broadcast"),
-        types.InlineKeyboardButton("💸 Withdrawals", callback_data="p_withdrawals"),
-        types.InlineKeyboardButton("➕ Add Admin", callback_data="p_addadmin"),
-        types.InlineKeyboardButton("➖ Remove Admin", callback_data="p_removeadmin"),
-        types.InlineKeyboardButton("👤 Users", callback_data="p_users"),
-        types.InlineKeyboardButton("🚫 Ban", callback_data="p_banuser"),
-        types.InlineKeyboardButton("✅ Unban", callback_data="p_unbanuser")
+        types.InlineKeyboardButton("📊 Bot Stats", callback_data="p_stats")
     )
     bot.send_message(message.chat.id, "👑 **MAIN ADMIN CONTROL PANEL**", reply_markup=markup, parse_mode="Markdown")
 
@@ -179,7 +185,7 @@ def new_qr_cmd(message):
     cursor.execute("SELECT id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
     row = cursor.fetchone()
     if not row:
-        bot.reply_to(message, "⚠️ No QR available! Upload one using `/uploadqr` first.")
+        bot.reply_to(message, "⚠️ No QR available! Upload one using `/admin` first.")
         return
         
     task_id = row[0]
@@ -228,7 +234,7 @@ def claim_qr_callback(call):
         bot.send_photo(call.message.chat.id, file_id, caption="✅ **QR Claimed Successfully!**\n₹8 added to your balance.", parse_mode="Markdown")
 
 # ---------------------------------------------------------
-# 6. TEXT BUTTON HANDLERS
+# 6. BUTTON HANDLERS (EXACT MATCH WITH SCREENSHOTS)
 # ---------------------------------------------------------
 @bot.message_handler(func=lambda message: True)
 def handle_text_buttons(message):
@@ -291,13 +297,13 @@ def handle_text_buttons(message):
             "⏳ Pending: 0\n\n"
             "📜 **RECENT ACTIVITY**\n"
             "-------------------------\n"
-            "No recent failed tasks."
+            "No recent activity."
         )
         bot.reply_to(message, msg, parse_mode="Markdown")
 
     elif "Support" in text or "support" in text.lower():
         markup = types.InlineKeyboardMarkup()
-        btn = types.InlineKeyboardButton("🆘Contact Support", url="https://t.me/Dictator_0771")
+        btn = types.InlineKeyboardButton("🆘 Contact Support", url="https://t.me/Dictator_0771")
         markup.add(btn)
         bot.send_message(message.chat.id, "🆘 **Support**\n\nIf you need help, contact our support team:", reply_markup=markup, parse_mode="Markdown")
 
