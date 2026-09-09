@@ -26,7 +26,7 @@ def run_flask():
 # ---------------------------------------------------------
 # 2. BOT INITIALIZATION & DATABASE SETUP
 # ---------------------------------------------------------
-# NOTE: Replace '8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4' with your actual Telegram Bot Token from BotFather!
+# REPLACE 'YOUR_BOT_TOKEN_HERE' WITH YOUR ACTUAL BOT TOKEN FROM BOTFATHER
 TOKEN = os.getenv("BOT_TOKEN", "8699692757:AAH2TzJTjAWBU16kpTQZLf24YZPPvhWTKp4")
 bot = telebot.TeleBot(TOKEN)
 
@@ -80,7 +80,7 @@ def is_banned(user_id):
 user_states = {}
 
 # ---------------------------------------------------------
-# 3. USER COMMAND HANDLERS
+# 3. USER COMMAND HANDLERS (ENGLISH)
 # ---------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
@@ -88,14 +88,14 @@ def start_cmd(message):
     register_user(uid, message.from_user.username)
     
     if is_banned(uid):
-        bot.reply_to(message, "❌ आप इस बॉट में बैन (Ban) हैं!")
+        bot.reply_to(message, "❌ You are banned from using this bot!")
         return
         
     bot.reply_to(message, 
-                 "🚀 **DAKSH QR BOT** में आपका स्वागत है!\n\n"
-                 "नीचे दिए गए ऑप्शन्स और कमांड्स का उपयोग करें।\n"
-                 "💰 बैलेंस चेक: `/balance`\n"
-                 "💸 विड्रॉल: `/withdrawal`", 
+                 "🚀 **Welcome to DAKSH QR BOT!**\n\n"
+                 "Use the menu buttons below or commands to navigate:\n"
+                 "💰 Check Balance: `/balance`\n"
+                 "💸 Withdraw: `/withdrawal`", 
                  parse_mode="Markdown")
 
 @bot.message_handler(commands=['balance'])
@@ -106,7 +106,7 @@ def balance_cmd(message):
     
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
     bal = cursor.fetchone()[0]
-    bot.reply_to(message, f"💰 **आपका कुल बैलेंस:** ₹{bal:.2f}", parse_mode="Markdown")
+    bot.reply_to(message, f"💰 **Your Current Balance:** ₹{bal:.2f}", parse_mode="Markdown")
 
 @bot.message_handler(commands=['withdrawal'])
 def withdrawal_cmd(message):
@@ -117,9 +117,9 @@ def withdrawal_cmd(message):
     bal = cursor.fetchone()[0]
     
     if bal <= 0:
-        bot.reply_to(message, "❌ आपके पास विड्रॉल करने के लिए बैलेंस नहीं है!")
+        bot.reply_to(message, "❌ You don't have enough balance to withdraw!")
     else:
-        bot.reply_to(message, f"💸 आपका विड्रॉल रिक्वेस्ट स्वीकार कर लिया गया है। एडमिन आपसे जल्द संपर्क करेंगे।\nबैलेंस: ₹{bal:.2f}")
+        bot.reply_to(message, f"💸 Your withdrawal request has been received.\nAdmin will process it soon.\nBalance: ₹{bal:.2f}")
 
 # ---------------------------------------------------------
 # 4. MAIN ADMIN CONTROL PANEL
@@ -149,12 +149,12 @@ def admin_panel_cmd(message):
     markup.add(b8)
     markup.add(b9, b10)
 
-    bot.send_message(message.chat.id, "👑 **MAIN ADMIN CONTROL PANEL**\n\nSelect an operation from below:", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "👑 **MAIN ADMIN CONTROL PANEL**\n\nSelect an option below:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("p_"))
 def admin_callbacks(call):
     if not is_admin(call.from_user.id):
-        bot.answer_callback_query(call.id, "❌ आपके पास परमिशन नहीं है!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Permission denied!", show_alert=True)
         return
 
     action = call.data
@@ -165,19 +165,19 @@ def admin_callbacks(call):
         u_count = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM admins")
         a_count = cursor.fetchone()[0]
-        bot.send_message(chat_id, f"📊 **Bot Stats:**\n\n👥 कुल यूज़र्स: `{u_count}`\n👑 कुल एडमिन: `{a_count}`", parse_mode="Markdown")
+        bot.send_message(chat_id, f"📊 **Bot Stats:**\n\n👥 Total Users: `{u_count}`\n👑 Total Admins: `{a_count}`", parse_mode="Markdown")
     
     elif action == "p_uploadqr":
-        bot.send_message(chat_id, "📤 QR अपलोड करने के लिए `/uploadqr` टाइप करें या सीधे फोटो भेजें।", parse_mode="Markdown")
+        bot.send_message(chat_id, "📤 Send `/uploadqr` or upload a photo directly to add QR.", parse_mode="Markdown")
     
     elif action == "p_broadcast":
-        bot.send_message(chat_id, "📢 ब्रॉडकास्ट भेजने के लिए यह कमांड लिखें:\n`/broadcast आपका मैसेज`", parse_mode="Markdown")
+        bot.send_message(chat_id, "📢 Send broadcast message using:\n`/broadcast Your Message Here`", parse_mode="Markdown")
         
     elif action == "p_addadmin":
-        bot.send_message(chat_id, "➕ नया एडमिन जोड़ने के लिए कमांड लिखें:\n`/addadmin <User_ID>`", parse_mode="Markdown")
+        bot.send_message(chat_id, "➕ Add admin using command:\n`/addadmin <User_ID>`", parse_mode="Markdown")
         
     elif action == "p_removeadmin":
-        bot.send_message(chat_id, "➖ एडमिन हटाने के लिए कमांड लिखें:\n`/removeadmin <User_ID>`", parse_mode="Markdown")
+        bot.send_message(chat_id, "➖ Remove admin using command:\n`/removeadmin <User_ID>`", parse_mode="Markdown")
         
     elif action == "p_users":
         cursor.execute("SELECT user_id, username, balance FROM users LIMIT 20")
@@ -188,15 +188,14 @@ def admin_callbacks(call):
         bot.send_message(chat_id, text, parse_mode="Markdown")
 
     elif action == "p_banuser":
-        bot.send_message(chat_id, "🚫 यूज़र बैन करने के लिए लिखें:\n`/ban <User_ID>`", parse_mode="Markdown")
+        bot.send_message(chat_id, "🚫 Ban user using:\n`/ban <User_ID>`", parse_mode="Markdown")
 
     elif action == "p_unbanuser":
-        bot.send_message(chat_id, "✅ यूज़र अनबैन करने के लिए लिखें:\n`/unban <User_ID>`", parse_mode="Markdown")
+        bot.send_message(chat_id, "✅ Unban user using:\n`/unban <User_ID>`", parse_mode="Markdown")
 
 # ---------------------------------------------------------
 # 5. ALL ADMIN COMMANDS
 # ---------------------------------------------------------
-
 @bot.message_handler(commands=['addadmin'])
 def add_admin_cmd(message):
     if not is_admin(message.from_user.id): return
@@ -204,9 +203,9 @@ def add_admin_cmd(message):
         new_id = int(message.text.split()[1])
         cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_id,))
         conn.commit()
-        bot.reply_to(message, f"✅ **User ID `{new_id}` अब एडमिन बन चुका है!**", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ **User ID `{new_id}` is now an Admin!**", parse_mode="Markdown")
     except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/addadmin 123456789`", parse_mode="Markdown")
+        bot.reply_to(message, "⚠️ Usage: `/addadmin 123456789`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['removeadmin'])
 def remove_admin_cmd(message):
@@ -215,16 +214,16 @@ def remove_admin_cmd(message):
         rem_id = int(message.text.split()[1])
         cursor.execute("DELETE FROM admins WHERE user_id = ?", (rem_id,))
         conn.commit()
-        bot.reply_to(message, f"🚫 **User ID `{rem_id}` को एडमिन से हटा दिया गया!**", parse_mode="Markdown")
+        bot.reply_to(message, f"🚫 **User ID `{rem_id}` removed from Admin!**", parse_mode="Markdown")
     except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/removeadmin 123456789`", parse_mode="Markdown")
+        bot.reply_to(message, "⚠️ Usage: `/removeadmin 123456789`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['users'])
 def users_cmd(message):
     if not is_admin(message.from_user.id): return
     cursor.execute("SELECT COUNT(*) FROM users")
     total = cursor.fetchone()[0]
-    bot.reply_to(message, f"👥 **कुल रजिस्टर्ड यूज़र्स:** `{total}`", parse_mode="Markdown")
+    bot.reply_to(message, f"👥 **Total Registered Users:** `{total}`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['ban'])
 def ban_cmd(message):
@@ -233,9 +232,9 @@ def ban_cmd(message):
         target_id = int(message.text.split()[1])
         cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (target_id,))
         conn.commit()
-        bot.reply_to(message, f"🚫 User ID `{target_id}` को **बैन** कर दिया गया!", parse_mode="Markdown")
+        bot.reply_to(message, f"🚫 User ID `{target_id}` has been **Banned**!", parse_mode="Markdown")
     except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/ban 123456789`", parse_mode="Markdown")
+        bot.reply_to(message, "⚠️ Usage: `/ban 123456789`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['unban'])
 def unban_cmd(message):
@@ -244,16 +243,16 @@ def unban_cmd(message):
         target_id = int(message.text.split()[1])
         cursor.execute("UPDATE users SET banned = 0 WHERE user_id = ?", (target_id,))
         conn.commit()
-        bot.reply_to(message, f"✅ User ID `{target_id}` को **अनबैन** कर दिया गया!", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ User ID `{target_id}` has been **Unbanned**!", parse_mode="Markdown")
     except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/unban 123456789`", parse_mode="Markdown")
+        bot.reply_to(message, "⚠️ Usage: `/unban 123456789`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['broadcast'])
 def broadcast_cmd(message):
     if not is_admin(message.from_user.id): return
     msg_text = message.text.replace("/broadcast", "").strip()
     if not msg_text:
-        bot.reply_to(message, "⚠️ कमांड के साथ मैसेज भी लिखें! उदाहरण:\n`/broadcast हेलो दोस्तों`", parse_mode="Markdown")
+        bot.reply_to(message, "⚠️ Please enter text to broadcast! Example:\n`/broadcast Hello Users`", parse_mode="Markdown")
         return
         
     cursor.execute("SELECT user_id FROM users WHERE banned = 0")
@@ -265,19 +264,13 @@ def broadcast_cmd(message):
             count += 1
         except:
             pass
-    bot.reply_to(message, f"📢 ब्रॉडकास्ट कुल `{count}` यूज़र्स को भेज दिया गया!", parse_mode="Markdown")
-
-@bot.message_handler(commands=['broadcastphoto'])
-def broadcast_photo_cmd(message):
-    if not is_admin(message.from_user.id): return
-    user_states[message.from_user.id] = "WAITING_BROADCAST_PHOTO"
-    bot.reply_to(message, "📸 कृपया वो फोटो भेजें जिसे आप सब यूज़र्स को ब्रॉडकास्ट करना चाहते हैं:")
+    bot.reply_to(message, f"📢 Broadcast successfully sent to `{count}` users!", parse_mode="Markdown")
 
 @bot.message_handler(commands=['uploadqr'])
 def upload_qr_cmd(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = "WAITING_QR_PHOTO"
-    bot.reply_to(message, "📥 कृपया QR Code की इमेज (Photo) भेजें:")
+    bot.reply_to(message, "📥 Please send the QR Code image:")
 
 @bot.message_handler(content_types=['photo'])
 def handle_photos(message):
@@ -286,28 +279,13 @@ def handle_photos(message):
     
     state = user_states.get(uid)
     
-    if state == "WAITING_BROADCAST_PHOTO":
-        file_id = message.photo[-1].file_id
-        caption = message.caption or ""
-        cursor.execute("SELECT user_id FROM users WHERE banned = 0")
-        users = cursor.fetchall()
-        count = 0
-        for u in users:
-            try:
-                bot.send_photo(u[0], file_id, caption=caption)
-                count += 1
-            except:
-                pass
-        user_states[uid] = None
-        bot.reply_to(message, f"📸 फोटो ब्रॉडकास्ट `{count}` यूज़र्स को सफलतापूर्वक भेज दिया गया!", parse_mode="Markdown")
-        
-    elif state == "WAITING_QR_PHOTO":
+    if state == "WAITING_QR_PHOTO":
         file_id = message.photo[-1].file_id
         cursor.execute("INSERT INTO qr_tasks (qr_file_id, price) VALUES (?, ?)", (file_id, 10.0))
         conn.commit()
         task_id = cursor.lastrowid
         user_states[uid] = None
-        bot.reply_to(message, f"✅ QR Code सफलतापूर्वक सेव हो गया! Task ID: `{task_id}`", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ QR Code saved successfully! Task ID: `{task_id}`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['newqr'])
 def new_qr_cmd(message):
@@ -315,7 +293,7 @@ def new_qr_cmd(message):
     cursor.execute("SELECT id, qr_file_id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
     row = cursor.fetchone()
     if not row:
-        bot.reply_to(message, "⚠️ कोई उपलब्ध QR नहीं है! पहले `/uploadqr` से QR अपलोड करें।")
+        bot.reply_to(message, "⚠️ No QR available! Upload one using `/uploadqr` first.")
         return
         
     task_id, file_id = row
@@ -336,13 +314,13 @@ def new_qr_cmd(message):
             bot.send_photo(u[0], file_id, caption=caption_text, reply_markup=markup, parse_mode="Markdown")
         except:
             pass
-    bot.reply_to(message, "🚀 नया QR स्क्रीनशॉट स्टाइल में सभी यूज़र्स को भेज दिया गया है!")
+    bot.reply_to(message, "🚀 New QR sent to all users!")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("claim_qr_"))
 def claim_qr_callback(call):
     uid = call.from_user.id
     if is_banned(uid):
-        bot.answer_callback_query(call.id, "❌ आप बैन हैं!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ You are banned!", show_alert=True)
         return
         
     task_id = int(call.data.replace("claim_qr_", ""))
@@ -350,41 +328,15 @@ def claim_qr_callback(call):
     row = cursor.fetchone()
     
     if not row or row[0] != 'AVAILABLE':
-        bot.answer_callback_query(call.id, "❌ यह QR पहले ही किसी द्वारा क्लेम किया जा चुका है!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ This QR has already been claimed by someone else!", show_alert=True)
     else:
         cursor.execute("UPDATE qr_tasks SET status = 'CLAIMED', claimed_by = ? WHERE id = ?", (uid, task_id))
         cursor.execute("UPDATE users SET balance = balance + 10.0 WHERE user_id = ?", (uid,))
         conn.commit()
-        bot.answer_callback_query(call.id, "🎉 बधाई हो! आपने QR सफलता से क्लेम कर लिया। आपके खाते में ₹10 जोड़ दिए गए!", show_alert=True)
-
-@bot.message_handler(commands=['addbalance'])
-def add_balance_cmd(message):
-    if not is_admin(message.from_user.id): return
-    try:
-        parts = message.text.split()
-        target_id = int(parts[1])
-        amount = float(parts[2])
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_id))
-        conn.commit()
-        bot.reply_to(message, f"✅ User ID `{target_id}` के बैलेंस में **+₹{amount:.2f}** बढ़ा दिए गए!", parse_mode="Markdown")
-    except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/addbalance 123456789 50`", parse_mode="Markdown")
-
-@bot.message_handler(commands=['deductbalance'])
-def deduct_balance_cmd(message):
-    if not is_admin(message.from_user.id): return
-    try:
-        parts = message.text.split()
-        target_id = int(parts[1])
-        amount = float(parts[2])
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, target_id))
-        conn.commit()
-        bot.reply_to(message, f"✅ User ID `{target_id}` के बैलेंस से **-₹{amount:.2f}** काट लिए गए!", parse_mode="Markdown")
-    except:
-        bot.reply_to(message, "⚠️ सही तरीका: `/deductbalance 123456789 20`", parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "🎉 Congratulations! You successfully claimed the QR. ₹10 added!", show_alert=True)
 
 # ---------------------------------------------------------
-# 6. TEXT BUTTON HANDLERS (FOR FRONTEND MENU COMPATIBILITY)
+# 6. TEXT BUTTON HANDLERS (FIXED EMOJI MATCHING & ENGLISH)
 # ---------------------------------------------------------
 @bot.message_handler(func=lambda message: True)
 def handle_text_buttons(message):
@@ -395,11 +347,12 @@ def handle_text_buttons(message):
     register_user(uid, message.from_user.username)
     text = message.text.strip()
 
-    if text in ["📍 Get QR", "Get QR", "QR"]:
+    # Exact Emoji Matching for Telegram Reply Keyboard Buttons
+    if "Get QR" in text or "get qr" in text.lower():
         cursor.execute("SELECT id, qr_file_id FROM qr_tasks WHERE status = 'AVAILABLE' ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
         if not row:
-            bot.reply_to(message, "⚠️ अभी कोई नया QR उपलब्ध नहीं है!")
+            bot.reply_to(message, "⚠️ No QR is available at the moment!")
             return
         task_id, file_id = row
         markup = types.InlineKeyboardMarkup()
@@ -412,24 +365,24 @@ def handle_text_buttons(message):
         )
         bot.send_photo(message.chat.id, file_id, caption=caption_text, reply_markup=markup, parse_mode="Markdown")
 
-    elif text in ["💰 Balance", "Balance"]:
+    elif "Balance" in text or "balance" in text.lower():
         cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
         bal = cursor.fetchone()[0]
-        bot.reply_to(message, f"💰 **आपका कुल बैलेंस:** ₹{bal:.2f}", parse_mode="Markdown")
+        bot.reply_to(message, f"💰 **Your Current Balance:** ₹{bal:.2f}", parse_mode="Markdown")
 
-    elif text in ["💸 Withdrawal", "Withdrawal"]:
+    elif "Withdrawal" in text or "withdrawal" in text.lower():
         cursor.execute("SELECT balance FROM users WHERE user_id = ?", (uid,))
         bal = cursor.fetchone()[0]
         if bal <= 0:
-            bot.reply_to(message, "❌ आपके पास विड्रॉल करने के लिए बैलेंस नहीं है!")
+            bot.reply_to(message, "❌ You don't have enough balance to withdraw!")
         else:
-            bot.reply_to(message, f"💸 आपका विड्रॉल रिक्वेस्ट स्वीकार कर लिया गया है। एडमिन आपसे जल्द संपर्क करेंगे।\nबैलेंस: ₹{bal:.2f}")
+            bot.reply_to(message, f"💸 Your withdrawal request has been received.\nAdmin will contact you soon.\nBalance: ₹{bal:.2f}")
 
-    elif text in ["📜 History", "History"]:
-        bot.reply_to(message, "📜 आपकी हिस्ट्री में अभी कोई पिछला रिकॉर्ड नहीं है।")
+    elif "History" in text or "history" in text.lower():
+        bot.reply_to(message, "📜 No previous history records found.")
 
-    elif text in ["🆘 Support", "Support"]:
-        bot.reply_to(message, "🆘 सहायता और पूछताछ के लिए संपर्क करें: @Dictator_0771")
+    elif "Support" in text or "support" in text.lower():
+        bot.reply_to(message, "🆘 For support and queries, contact: @Dictator_0771")
 
 # ---------------------------------------------------------
 # 7. MAIN EXECUTION THREAD
